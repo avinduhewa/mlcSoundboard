@@ -11,6 +11,7 @@ import {
     ScrollView
 } from 'react-native';
 
+import { Container, Header, Title, Content, Footer, InputGroup, Input, FooterTab, Button, Icon, Spinner } from 'native-base';
 import Sound from 'react-native-sound';
 import RNFetchBlob from 'react-native-fetch-blob'
 
@@ -24,7 +25,10 @@ class MainView extends Component {
     constructor(props) {
         super(props)
         this.state = {
-            files: []
+            files: [],
+            filteredFiles: [],
+            isLoading: false,
+            searchQuery: ''
         }
     }
     componentWillMount() {
@@ -32,18 +36,59 @@ class MainView extends Component {
     }
     render() {
         return (
-            <View style={styles.container}>
-                <TouchableOpacity
-                    onPress={this.sync}
-                    style={{position: 'absolute', top: 30, right: 30}}>
-                    <Text style={styles.button}>sync</Text>
-                </TouchableOpacity>
+            <Container>
+                <Header searchBar rounded>
+                    <InputGroup>
+                        <Icon name="ios-search" />
+                        <Input
+                            placeholder="Cerca"
+                            onChangeText={text => {
+                                this.setState({
+                                    searchQuery: text
+                                })
+                            }}  />
+                    </InputGroup>
+                    <Button transparent onPress={this.filterName}>
+                        Cerca
+                    </Button>
+                </Header>
+                {/* <Header>
+                    <Button transparent>
+                        <View/>
+                    </Button>
 
-                <ScrollView style={{marginTop: 100, marginBottom: 50}}>
-                    {this.state.files.map((file, i) => this.renderFile(file, i))}
-                </ScrollView>
-            </View>
+                    <Title>MLC Soundboard</Title>
+
+                    <Button transparent
+                        onPress={this.sync}>
+                        <Icon name='ios-sync' />
+                    </Button>
+                </Header> */}
+
+                <Content>
+                    <Spinner animating ={this.state.isLoading}  color='black' size='small' />
+                    <ScrollView >
+                        {this.state.filteredFiles.map((file, i) => this.renderFile(file, i))}
+                    </ScrollView>
+                </Content>
+
+                {/* <Footer>
+                    <FooterTab>
+                        <Button transparent>
+                            <Icon name='ios-call' />
+                        </Button>
+                    </FooterTab>
+                </Footer> */}
+            </Container>
         )
+    }
+    filterName = () => {
+        console.log(this.state.files)
+        this.setState({
+            filteredFiles: this.state.files.filter((el) => {
+                return el.Name.indexOf(this.state.searchQuery) >= 0 || el.Tags.find(tag => tag.indexOf(this.state.searchQuery) >= 0)
+            })
+        })
     }
     renderFile = (file, index) => {
         return (
@@ -75,7 +120,8 @@ class MainView extends Component {
                 //update local json
                 AsyncStorage.setItem('soundMap', JSON.stringify(res));
                 context.setState({
-                    files: res
+                    files: res,
+                    filteredFiles: res
                 })
             }
         })
@@ -115,9 +161,12 @@ class MainView extends Component {
     getSoundMap = () => {
         AsyncStorage.getItem('soundMap').then((res) => {
             const soundMap = JSON.parse(res)
-            this.setState({
-                files: soundMap
-            })
+            if (soundMap) {
+                this.setState({
+                    files: soundMap,
+                    filteredFiles: soundMap
+                })
+            }
             this.sync()
         })
     }
@@ -143,20 +192,11 @@ class MainView extends Component {
 }
 
 var styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    button: {
-        fontSize: 20,
-        backgroundColor: 'silver',
-        padding: 5,
-    },
     row: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        padding: 10
     }
 });
 
