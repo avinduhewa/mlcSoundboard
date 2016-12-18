@@ -50,16 +50,34 @@ class MainView extends Component {
             <View key={index} style={styles.row}>
                 <Text>{file.Name}</Text>
                     <TouchableOpacity
-                        onPress={() => this.playSound(this.cleanName(file.Path))}>
+                        onPress={() => this.playSound(encodeURI(file.Path))}>
                         <Text style={styles.button}>PLAY</Text>
                     </TouchableOpacity>
             </View>
         )
     }
     sync = () => {
+        let context = this
         this.fetchJson().then((res) => {
-            AsyncStorage.setItem('soundMap', JSON.stringify(res));
-            res.map(obj => this.fetchRemoteFile(obj))
+            if (res) {
+                //console.log("res2", res)
+
+                //fetch remote solo di quelli da aggiornare
+                res.map(obj => {
+                    //find item in local json
+                    let localObj = context.state.files.find(el => el.Path === obj.Path)
+
+                    if (!localObj || obj.LastModified > localObj.LastModified) {
+                        this.fetchRemoteFile(obj)
+                    }
+                })
+
+                //update local json
+                AsyncStorage.setItem('soundMap', JSON.stringify(res));
+                context.setState({
+                    files: res
+                })
+            }
         })
     }
     fetchJson() {
@@ -69,6 +87,7 @@ class MainView extends Component {
             })
             .fetch('GET', MAIN_URL + JSON_NAME, {})
             .then((res) => {
+                //console.log(res.json())
                 return res.json()
             })
             .catch((errorMessage, statusCode) => {
@@ -76,18 +95,12 @@ class MainView extends Component {
                 console.log(errorMessage)
             })
     }
-    cleanUrl = (name) => {
-        return name.replace(/ /g, '%20')
-    }
-    cleanName = (name) => {
-        return name.replace(/,/g, '').replace(/ /g, '')
-    }
     fetchRemoteFile = (obj) => {
         RNFetchBlob
             .config({
-                path : SOUNDS_LOCAL_PATH + this.cleanName(obj.Path) //target path
+                path : SOUNDS_LOCAL_PATH + encodeURI(obj.Path) //target path
             })
-            .fetch('GET', MAIN_URL + this.cleanUrl(obj.Path), {})
+            .fetch('GET', MAIN_URL + encodeURI(obj.Path), {})
             .then((res) => {
                 // the conversion is done in native code
                 // the following conversions are done in js, it's SYNC
@@ -105,6 +118,7 @@ class MainView extends Component {
             this.setState({
                 files: soundMap
             })
+            this.sync()
         })
     }
     getLocalFiles = (path) => {
