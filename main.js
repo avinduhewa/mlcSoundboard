@@ -11,7 +11,7 @@ import {
     ScrollView
 } from 'react-native';
 
-import { Container, Header, Title, Content, Footer, InputGroup, Input, FooterTab, Button, Icon, Spinner } from 'native-base';
+import { Container, Header, Title, Content, Footer, InputGroup, List, ListItem, Input, FooterTab, Button, Icon, Spinner } from 'native-base';
 import Sound from 'react-native-sound';
 import RNFetchBlob from 'react-native-fetch-blob'
 
@@ -66,10 +66,10 @@ class MainView extends Component {
                 </Header> */}
 
                 <Content>
-                    <Spinner animating ={this.state.isLoading}  color='black' size='small' />
-                    <ScrollView >
-                        {this.state.filteredFiles.map((file, i) => this.renderFile(file, i))}
-                    </ScrollView>
+                    {/* <Spinner animating ={this.state.isLoading}  color='black' size='small' /> */}
+                    <List>
+                      {this.state.filteredFiles.map((file, i) => this.renderFile(file, i))}
+                   </List>
                 </Content>
 
                 {/* <Footer>
@@ -91,14 +91,25 @@ class MainView extends Component {
         })
     }
     renderFile = (file, index) => {
+        // <ListItem itemDivider>
+        //     <Text>A</Text>
+        // </ListItem>
+        // <ListItem >
+        //     <Text>Aaron Bennet</Text>
+        // </ListItem>
         return (
-            <View key={index} style={styles.row}>
-                <Text>{file.Name}</Text>
-                    <TouchableOpacity
-                        onPress={() => this.playSound(encodeURI(file.Path))}>
-                        <Text style={styles.button}>PLAY</Text>
-                    </TouchableOpacity>
-            </View>
+            <ListItem key={index}>
+                <TouchableOpacity
+                    style={styles.row}
+                    onPress={() => this.playSound(encodeURI(file.Path))}>
+                    <View>
+                        <Text style={{fontSize: 16, fontWeight: '600', marginBottom: 3}}>{file.Name}</Text>
+                        <Text style={{fontSize: 14, fontWeight: '300'}}>by {file.Tags[0]}</Text>
+                    </View>
+
+                    <Icon name="ios-play"/>
+                </TouchableOpacity>
+            </ListItem>
         )
     }
     sync = () => {
@@ -196,7 +207,7 @@ var styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 10
+        marginRight: 10
     }
 });
 
