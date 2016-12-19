@@ -16,7 +16,7 @@ import Sound from 'react-native-sound';
 import RNFetchBlob from 'react-native-fetch-blob'
 
 const MAIN_LOCAL_PATH = RNFetchBlob.fs.dirs.MainBundleDir + '/assets/'
-const SOUNDS_LOCAL_PATH = MAIN_LOCAL_PATH + 'sounds/'
+const SOUNDS_LOCAL_PATH = MAIN_LOCAL_PATH + 'sounds'
 
 const MAIN_URL = 'https://mountainlaircamp.blob.core.windows.net/mlc-soundbank/'
 const JSON_NAME = 'MLCSoundBank.json'
@@ -172,12 +172,15 @@ class MainView extends Component {
     fetchRemoteFile = (obj) => {
         RNFetchBlob
             .config({
-                path : SOUNDS_LOCAL_PATH + encodeURI(obj.Path) //target path
+                path : SOUNDS_LOCAL_PATH + '/' + encodeURI(obj.Path) //target path
             })
             .fetch('GET', MAIN_URL + encodeURI(obj.Path), {})
             .then((res) => {
                 // the conversion is done in native code
                 // the following conversions are done in js, it's SYNC
+                this.setState({
+                    errorMessage: res.path()
+                })
                 console.log('The file saved to ', res.path())
             })
             // Status code is not 200
@@ -230,13 +233,22 @@ class MainView extends Component {
                 files: files
             })
         }
+        //file.sound.enableInSilenceMode(true);
+        file.sound.play((success) => {
+            if (success) {
+                files[index].isPlaying = !files[index].isPlaying
 
-        file.sound.play(() => {
-            files[index].isPlaying = !files[index].isPlaying
-
-            this.setState({
-                files: files
-            })
+                this.setState({
+                    files: files
+                })
+            } else {
+                this.setState({
+                    errorMessage: "Errore riproduzione audio"
+                })
+            }
+        },
+        (err) => {
+            console.log(err)
         })
     }
 }
