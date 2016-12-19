@@ -11,7 +11,7 @@ import {
     ScrollView
 } from 'react-native';
 
-import { Container, Header, Title, Content, Footer, InputGroup, List, ListItem, Input, FooterTab, Button, Icon, Spinner } from 'native-base';
+import { Container, Header, Title, Content, Footer, Badge, InputGroup, List, ListItem, Input, FooterTab, Button, Icon, Spinner } from 'native-base';
 import Sound from 'react-native-sound';
 import RNFetchBlob from 'react-native-fetch-blob'
 
@@ -28,7 +28,8 @@ class MainView extends Component {
             files: [],
             filteredFiles: [],
             isLoading: false,
-            searchQuery: ''
+            searchQuery: '',
+            errorMessage: ''
         }
     }
     componentWillMount() {
@@ -67,6 +68,14 @@ class MainView extends Component {
 
                 <Content>
                     {/* <Spinner animating ={this.state.isLoading}  color='black' size='small' /> */}
+                    {
+                        this.state.errorMessage ?
+                        <View style={{padding: 10, flexDirection: 'row', alignItems: 'flex-end', flex: 1}}>
+                            <Badge danger>
+                                {this.state.errorMessage}
+                            </Badge>
+                        </View> : null
+                    }
                     <List>
                       {this.state.filteredFiles.map((file, i) => this.renderFile(file, i))}
                    </List>
@@ -90,24 +99,27 @@ class MainView extends Component {
             })
         })
     }
+    soundAction = (file) => {
+        if (file.isPlaying) {
+            this.stopSound(file)
+        } else {
+            this.playSound(file)
+        }
+    }
     renderFile = (file, index) => {
         // <ListItem itemDivider>
         //     <Text>A</Text>
-        // </ListItem>
-        // <ListItem >
-        //     <Text>Aaron Bennet</Text>
         // </ListItem>
         return (
             <ListItem key={index}>
                 <TouchableOpacity
                     style={styles.row}
-                    onPress={() => this.playSound(encodeURI(file.Path))}>
+                    onPress={() => this.soundAction(file)}>
                     <View>
                         <Text style={{fontSize: 16, fontWeight: '600', marginBottom: 3}}>{file.Name}</Text>
                         <Text style={{fontSize: 14, fontWeight: '300'}}>by {file.Tags[0]}</Text>
                     </View>
-
-                    <Icon name="ios-play"/>
+                    <Icon name={file.isPlaying ? 'ios-pause' : 'ios-play'} style={{color: '#24BBFF'}}/>
                 </TouchableOpacity>
             </ListItem>
         )
@@ -116,8 +128,6 @@ class MainView extends Component {
         let context = this
         this.fetchJson().then((res) => {
             if (res) {
-                //console.log("res2", res)
-
                 //fetch remote solo di quelli da aggiornare
                 res.map(obj => {
                     //find item in local json
@@ -130,27 +140,34 @@ class MainView extends Component {
 
                 //update local json
                 AsyncStorage.setItem('soundMap', JSON.stringify(res));
+
+                const boostedSoundMap = res.map((el, i) => {
+                    return {
+                        ...el,
+                        isPlaying: false,
+                        sound: new Sound(el.Path, SOUNDS_LOCAL_PATH, (e) => {})
+                    }
+                });
                 context.setState({
-                    files: res,
-                    filteredFiles: res
+                    files: boostedSoundMap,
+                    filteredFiles: boostedSoundMap
+                })
+            } else {
+                this.setState({
+                    errorMessage: "Errore connessione server remoto"
                 })
             }
         })
     }
     fetchJson() {
-        return RNFetchBlob
-            .config({
-                path : MAIN_LOCAL_PATH + JSON_NAME //target path
+        return fetch(MAIN_URL + JSON_NAME)
+            .then((response) => response.json())
+            .then((responseJson) => {
+                return responseJson;
             })
-            .fetch('GET', MAIN_URL + JSON_NAME, {})
-            .then((res) => {
-                //console.log(res.json())
-                return res.json()
-            })
-            .catch((errorMessage, statusCode) => {
-                // error handling
-                console.log(errorMessage)
-            })
+            .catch((error) => {
+                console.error(error);
+            });
     }
     fetchRemoteFile = (obj) => {
         RNFetchBlob
@@ -172,33 +189,55 @@ class MainView extends Component {
     getSoundMap = () => {
         AsyncStorage.getItem('soundMap').then((res) => {
             const soundMap = JSON.parse(res)
+
             if (soundMap) {
+                const boostedSoundMap = soundMap.map((el, i) => {
+                    return {
+                        ...el,
+                        isPlaying: false,
+                        sound: new Sound(el.Path, SOUNDS_LOCAL_PATH, (e) => {})
+                    }
+                });
+
                 this.setState({
-                    files: soundMap,
-                    filteredFiles: soundMap
+                    files: boostedSoundMap,
+                    filteredFiles: boostedSoundMap
                 })
             }
             this.sync()
         })
     }
-    getLocalFiles = (path) => {
-        RNFetchBlob.fs.ls(SOUNDS_LOCAL_PATH + path)
-            // files will an array contains filenames
-            .then((files) => {
-                this.setState({
-                    files: files
-                })
+    stopSound = (file) => {
+        let files = this.state.files
+        let index = files.findIndex( (el) => el.Path === file.Path)
+        if (index >= 0) {
+            files[index].isPlaying = !files[index].isPlaying
+
+            this.setState({
+                files: files
             })
+        }
+
+        file.sound.stop()
     }
-    playSound  = (path) => {
-        var s = new Sound(path, SOUNDS_LOCAL_PATH, (e) => {
-            if (e) {
-                console.log('error', e);
-            } else {
-                console.log('duration', s.getDuration());
-                s.play();
-            }
-        });
+    playSound  = (file) => {
+        let files = this.state.files
+        let index = files.findIndex( (el) => el.Path === file.Path)
+        if (index >= 0) {
+            files[index].isPlaying = !files[index].isPlaying
+
+            this.setState({
+                files: files
+            })
+        }
+
+        file.sound.play(() => {
+            files[index].isPlaying = !files[index].isPlaying
+
+            this.setState({
+                files: files
+            })
+        })
     }
 }
 
