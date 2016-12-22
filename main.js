@@ -8,15 +8,19 @@ import {
     TouchableOpacity,
     View,
     AsyncStorage,
-    ScrollView
+    ScrollView,
+    Dimensions
 } from 'react-native';
 
 import { Container, Header, Title, Content, Footer, Badge, InputGroup, List, ListItem, Input, FooterTab, Button, Icon, Spinner } from 'native-base';
 import Sound from 'react-native-sound';
 import RNFetchBlob from 'react-native-fetch-blob'
 
-const MAIN_LOCAL_PATH = RNFetchBlob.fs.dirs.MainBundleDir + '/assets/'
-const SOUNDS_LOCAL_PATH = MAIN_LOCAL_PATH + 'sounds'
+const windowSize = Dimensions.get('window');
+
+const MAIN_DIR = RNFetchBlob.fs.dirs.DocumentDir // DocumentDir MainBundleDir DownloadDir
+const MAIN_LOCAL_PATH = MAIN_DIR + '/assets'
+const SOUNDS_LOCAL_PATH = MAIN_LOCAL_PATH + '/sounds'
 
 const MAIN_URL = 'https://mountainlaircamp.blob.core.windows.net/mlc-soundbank/'
 const JSON_NAME = 'MLCSoundBank.json'
@@ -28,6 +32,8 @@ class MainView extends Component {
             files: [],
             filteredFiles: [],
             isLoading: false,
+            currentFetch: 0,
+            totalFetch: 0,
             searchQuery: '',
             errorMessage: ''
         }
@@ -67,18 +73,34 @@ class MainView extends Component {
                 </Header> */}
 
                 <Content>
-                    {/* <Spinner animating ={this.state.isLoading}  color='black' size='small' /> */}
+                    {
+                        this.state.isLoading ?
+                        <Spinner animating ={this.state.isLoading}  color='black' size='small' /> :
+                            null
+                    }
+                    {
+                        this.state.isLoading ?
+                        <View style={{padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: windowSize.width}}>
+                            <Badge info>Aggiornamento {this.state.currentFetch} di {this.state.totalFetch}</Badge>
+                        </View> :
+                            null
+                    }
                     {
                         this.state.errorMessage ?
-                        <View style={{padding: 10, flexDirection: 'row', alignItems: 'flex-end', flex: 1}}>
+                        <View style={{padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: windowSize.width}}>
                             <Badge danger>
                                 {this.state.errorMessage}
                             </Badge>
                         </View> : null
                     }
+
+                    {/* <Button
+                        onPress={this.test}>
+                        Test
+                    </Button> */}
                     <List>
                       {this.state.filteredFiles.map((file, i) => this.renderFile(file, i))}
-                   </List>
+                    </List>
                 </Content>
 
                 {/* <Footer>
@@ -90,6 +112,48 @@ class MainView extends Component {
                 </Footer> */}
             </Container>
         )
+    }
+    test = () => {
+        //get remote file, clean nale and save it in raw
+        RNFetchBlob
+            .config({
+                path : RNFetchBlob.fs.dirs.MainBundleDir + "/asd.wav" // DocumentDir MainBundleDir DownloadDir
+            })
+            .fetch('GET', MAIN_URL + 'Enciclico/Olifante.wav', {})
+            .then((res) => {
+                console.log('The file saved to ', res.path())
+
+                RNFetchBlob.fs.stat(RNFetchBlob.fs.dirs.MainBundleDir + '/asd.wav')
+               // files will an array contains filenames
+               .then((files) => {
+                   console.log(files)
+               })
+
+                Sound.MAIN_BUNDLE
+                var whoosh = new Sound('asd', RNFetchBlob.fs.dirs.MainBundleDir, (error) => {
+                  if (error) {
+                    console.log('failed to load the sound', error);
+                  } else { // loaded successfully
+                    console.log('duration in seconds: ' + whoosh.getDuration() +
+                        'number of channels: ' + whoosh.getNumberOfChannels());
+
+                        whoosh.play((success) => {
+                          if (success) {
+                            console.log('successfully finished playing');
+                          } else {
+                            console.log('playback failed due to audio decoding errors');
+                          }
+                        });
+                  }
+                });
+            })
+            // Status code is not 200
+            .catch((errorMessage, statusCode) => {
+                // error handling
+                console.log(errorMessage)
+            })
+
+        //play sound
     }
     filterName = () => {
         console.log(this.state.files)
@@ -107,9 +171,6 @@ class MainView extends Component {
         }
     }
     renderFile = (file, index) => {
-        // <ListItem itemDivider>
-        //     <Text>A</Text>
-        // </ListItem>
         return (
             <ListItem key={index}>
                 <TouchableOpacity
@@ -145,7 +206,7 @@ class MainView extends Component {
                     return {
                         ...el,
                         isPlaying: false,
-                        sound: new Sound(el.Path, SOUNDS_LOCAL_PATH, (e) => {})
+                        //sound: new Sound(el.Path, SOUNDS_LOCAL_PATH, (e) => {})
                     }
                 });
                 context.setState({
@@ -170,18 +231,22 @@ class MainView extends Component {
             });
     }
     fetchRemoteFile = (obj) => {
+        let context = this
+        context.setState({
+            totalFetch : this.state.totalFetch + 1,
+            isLoading: true
+        })
         RNFetchBlob
             .config({
                 path : SOUNDS_LOCAL_PATH + '/' + encodeURI(obj.Path) //target path
             })
             .fetch('GET', MAIN_URL + encodeURI(obj.Path), {})
             .then((res) => {
-                // the conversion is done in native code
-                // the following conversions are done in js, it's SYNC
-                this.setState({
-                    errorMessage: res.path()
-                })
                 console.log('The file saved to ', res.path())
+                context.setState({
+                    currentFetch : context.state.currentFetch + 1,
+                    isLoading: context.state.currentFetch + 1 != context.state.totalFetch
+                })
             })
             // Status code is not 200
             .catch((errorMessage, statusCode) => {
@@ -198,7 +263,7 @@ class MainView extends Component {
                     return {
                         ...el,
                         isPlaying: false,
-                        sound: new Sound(el.Path, SOUNDS_LOCAL_PATH, (e) => {})
+                        //sound: new Sound(el.Path, SOUNDS_LOCAL_PATH, (e) => {})
                     }
                 });
 
@@ -233,23 +298,40 @@ class MainView extends Component {
                 files: files
             })
         }
-        //file.sound.enableInSilenceMode(true);
-        file.sound.play((success) => {
-            if (success) {
-                files[index].isPlaying = !files[index].isPlaying
 
-                this.setState({
-                    files: files
-                })
-            } else {
-                this.setState({
-                    errorMessage: "Errore riproduzione audio"
-                })
+        let sound = new Sound(file.Path, SOUNDS_LOCAL_PATH, (error) => {
+            if (error) {
+              console.log('failed to load the sound', error);
+            } else { // loaded successfully
+              console.log('duration in seconds: ' + sound.getDuration() +
+                  'number of channels: ' + sound.getNumberOfChannels());
+                    files[index].sound = sound
+                    this.setState({
+                        files: files
+                    })
+
+                  //file.sound.enableInSilenceMode(true);
+                  console.log("name", sound._filename)
+                  sound.play((success) => {
+                      if (success) {
+                          files[index].isPlaying = !files[index].isPlaying
+
+
+                          this.setState({
+                              files: files
+                          })
+                      } else {
+                          this.setState({
+                              errorMessage: "Errore riproduzione audio"
+                          })
+                      }
+                  },
+                  (err) => {
+                      console.log(err)
+                  })
             }
-        },
-        (err) => {
-            console.log(err)
         })
+
     }
 }
 
