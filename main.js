@@ -9,7 +9,9 @@ import {
     View,
     AsyncStorage,
     ScrollView,
-    Dimensions
+    Dimensions,
+    Platform,
+    NetInfo
 } from 'react-native';
 
 import { Container, Header, Title, Content, Footer, Badge, InputGroup, List, ListItem, Input, FooterTab, Button, Icon, Spinner } from 'native-base';
@@ -18,10 +20,7 @@ import RNFetchBlob from 'react-native-fetch-blob'
 
 const windowSize = Dimensions.get('window');
 
-const MAIN_DIR = RNFetchBlob.fs.dirs.DocumentDir // DocumentDir MainBundleDir DownloadDir
-const MAIN_LOCAL_PATH = MAIN_DIR + '/assets'
-const SOUNDS_LOCAL_PATH = MAIN_LOCAL_PATH + '/sounds'
-
+const MAIN_DIR = RNFetchBlob.fs.dirs.DocumentDir
 const MAIN_URL = 'https://mountainlaircamp.blob.core.windows.net/mlc-soundbank/'
 const JSON_NAME = 'MLCSoundBank.json'
 
@@ -30,6 +29,8 @@ class MainView extends Component {
         super(props)
         this.state = {
             files: [],
+            localMap: [],
+            remoteMap: [],
             filteredFiles: [],
             isLoading: false,
             currentFetch: 0,
@@ -41,10 +42,131 @@ class MainView extends Component {
     componentWillMount() {
         this.getSoundMap()
     }
+    getLocalSoundMap = () => {
+        AsyncStorage.getItem('soundMap').then((res) => {
+            const soundMap = JSON.parse(res);
+
+            if (soundMap) {
+                this.setState({
+                    localMap: soundMap
+                });
+            }
+
+            this.isOnlineAction(this.getRemoteSoundMap)
+        })
+    }
+    isOnlineAction = (action) => {
+        NetInfo.isConnected.fetch().then(() => {
+            NetInfo.isConnected.addEventListener('change', isConnected => {
+                if (isConnected) {
+                    action()
+                }
+            });
+        });
+    }
+    getRemoteSoundMap = () => {
+        let context = this
+
+        this.fetchData().then((res) => {
+            if (res) {
+                this.setState({
+                    remoteMap: res
+                });
+
+                res.map(obj => this.handleSingleFile(obj))
+
+                //alla fine di tutti i map
+                // update local json
+            }
+        })
+
+
+        // this.fetchJson().then((res) => {
+        //     if (res) {
+        //         res.map(obj => this.handleSingleFile(obj))
+
+                //creazione cartelle android
+                // if (Platform.OS == 'ios') {
+                //     res.map(obj => {
+                //         //find item in local json
+                //         this.manageSingleFile(obj)
+                //     })
+                // } else {
+                //     res.map(obj => this.createDirs(obj))
+                // }
+
+                // const boostedSoundMap = res.map((el, i) => {
+                //     return {
+                //         ...el,
+                //         isPlaying: false
+                //     }
+                // });
+                // context.setState({
+                //     files: boostedSoundMap,
+                //     filteredFiles: boostedSoundMap
+                // })
+
+                //update local json
+                //AsyncStorage.setItem('soundMap', JSON.stringify(res));
+        //     } else {
+        //         this.setState({
+        //             errorMessage: "Errore connessione server remoto"
+        //         })
+        //     }
+        // })
+    }
+    handleSingleFile = (file) => {
+        //check se è nello stato
+        if (this.isLocalFileToUpdate(file)) {
+            //check folder
+
+            //fetch singolo file
+            this.fetchRemoteFile()
+        } else {
+            this.syncState(file)
+        }
+    }
+    syncState = (file) => {
+        let index = this.state.remoteMap.findIndex( (el) => el.Path === file.Path)
+        let tempArray = this.state.remoteMap
+        tempArray[i] = {
+            ...file,
+            isPlaying: false,
+            sound: new Sound(file.Path, MAIN_DIR, (e) => {})
+        }
+
+        this.setState({
+            remoteMap: tempArray
+        })
+    }
+    isLocalFileToUpdate = (remoteFile) => {
+        let localFile = this.state.files.find(el => el.Path === remoteFile.Path)
+
+        return !localFile || remoteFile.LastModified > localFile.LastModified
+    }
+    renderFile = (file, index) => {
+        return (
+            <ListItem key={index}>
+                <TouchableOpacity
+                    style={styles.row}
+                    onPress={() => this.soundAction(file)}>
+                    <View>
+                        <Text style={{fontSize: 16, fontWeight: '600', marginBottom: 3}}>{file.Name}</Text>
+                        <Text style={{fontSize: 14, fontWeight: '300'}}>by {file.Tags[0]}</Text>
+                    </View>
+                    <Icon name={file.isPlaying ? 'ios-pause' : 'ios-play'} style={{color: '#24BBFF'}}/>
+                </TouchableOpacity>
+            </ListItem>
+        )
+    }
+    renderFiles = () => {
+        let files = this.state.remoteMap.length > 0 ? this.state.remoteMap : this.state.localMap
+        return this.state.files.map((file, i) => this.renderFile(file, i))
+    }
     render() {
         return (
             <Container>
-                <Header searchBar rounded>
+                {/* <Header searchBar rounded>
                     <InputGroup>
                         <Icon name="ios-search" />
                         <Input
@@ -58,8 +180,8 @@ class MainView extends Component {
                     <Button transparent onPress={this.filterName}>
                         Cerca
                     </Button>
-                </Header>
-                {/* <Header>
+                </Header> */}
+                <Header>
                     <Button transparent>
                         <View/>
                     </Button>
@@ -70,7 +192,7 @@ class MainView extends Component {
                         onPress={this.sync}>
                         <Icon name='ios-sync' />
                     </Button>
-                </Header> */}
+                </Header>
 
                 <Content>
                     {
@@ -99,7 +221,7 @@ class MainView extends Component {
                         Test
                     </Button> */}
                     <List>
-                      {this.state.filteredFiles.map((file, i) => this.renderFile(file, i))}
+                      {this.renderFiles()}
                     </List>
                 </Content>
 
@@ -112,48 +234,6 @@ class MainView extends Component {
                 </Footer> */}
             </Container>
         )
-    }
-    test = () => {
-        //get remote file, clean nale and save it in raw
-        RNFetchBlob
-            .config({
-                path : RNFetchBlob.fs.dirs.MainBundleDir + "/asd.wav" // DocumentDir MainBundleDir DownloadDir
-            })
-            .fetch('GET', MAIN_URL + 'Enciclico/Olifante.wav', {})
-            .then((res) => {
-                console.log('The file saved to ', res.path())
-
-                RNFetchBlob.fs.stat(RNFetchBlob.fs.dirs.MainBundleDir + '/asd.wav')
-               // files will an array contains filenames
-               .then((files) => {
-                   console.log(files)
-               })
-
-                Sound.MAIN_BUNDLE
-                var whoosh = new Sound('asd', RNFetchBlob.fs.dirs.MainBundleDir, (error) => {
-                  if (error) {
-                    console.log('failed to load the sound', error);
-                  } else { // loaded successfully
-                    console.log('duration in seconds: ' + whoosh.getDuration() +
-                        'number of channels: ' + whoosh.getNumberOfChannels());
-
-                        whoosh.play((success) => {
-                          if (success) {
-                            console.log('successfully finished playing');
-                          } else {
-                            console.log('playback failed due to audio decoding errors');
-                          }
-                        });
-                  }
-                });
-            })
-            // Status code is not 200
-            .catch((errorMessage, statusCode) => {
-                // error handling
-                console.log(errorMessage)
-            })
-
-        //play sound
     }
     filterName = () => {
         console.log(this.state.files)
@@ -170,34 +250,40 @@ class MainView extends Component {
             this.playSound(file)
         }
     }
-    renderFile = (file, index) => {
-        return (
-            <ListItem key={index}>
-                <TouchableOpacity
-                    style={styles.row}
-                    onPress={() => this.soundAction(file)}>
-                    <View>
-                        <Text style={{fontSize: 16, fontWeight: '600', marginBottom: 3}}>{file.Name}</Text>
-                        <Text style={{fontSize: 14, fontWeight: '300'}}>by {file.Tags[0]}</Text>
-                    </View>
-                    <Icon name={file.isPlaying ? 'ios-pause' : 'ios-play'} style={{color: '#24BBFF'}}/>
-                </TouchableOpacity>
-            </ListItem>
-        )
+    smartSync = () => {
+        let context = this
+
+        //prendo json remoto
+        this.fetchData().then((res) => {
+            if (res) {
+                // map
+                res.map(obj => {
+                    this.checkFileExistence(obj)
+                })
+            } else {
+                this.setState({
+                    errorMessage: "Errore connessione server remoto"
+                })
+            }
+        })
+         //-> se dir non esiste - crea ->
+         //-> if not -> writeremotefile -> if exists creo sound e metto in state
+        //salvo json in locale
     }
     sync = () => {
         let context = this
-        this.fetchJson().then((res) => {
+        this.fetchData().then((res) => {
             if (res) {
-                //fetch remote solo di quelli da aggiornare
-                res.map(obj => {
-                    //find item in local json
-                    let localObj = context.state.files.find(el => el.Path === obj.Path)
 
-                    if (!localObj || obj.LastModified > localObj.LastModified) {
-                        this.fetchRemoteFile(obj)
-                    }
-                })
+                //creazione cartelle android
+                if (Platform.OS == 'ios') {
+                    res.map(obj => {
+                        //find item in local json
+                        this.manageSingleFile(obj)
+                    })
+                } else {
+                    res.map(obj => this.createDirs(obj))
+                }
 
                 //update local json
                 AsyncStorage.setItem('soundMap', JSON.stringify(res));
@@ -205,8 +291,7 @@ class MainView extends Component {
                 const boostedSoundMap = res.map((el, i) => {
                     return {
                         ...el,
-                        isPlaying: false,
-                        //sound: new Sound(el.Path, SOUNDS_LOCAL_PATH, (e) => {})
+                        isPlaying: false
                     }
                 });
                 context.setState({
@@ -220,15 +305,51 @@ class MainView extends Component {
             }
         })
     }
-    fetchJson() {
-        return fetch(MAIN_URL + JSON_NAME)
-            .then((response) => response.json())
-            .then((responseJson) => {
-                return responseJson;
+    createDirs = (file) => {
+        let context = this
+        const pathName = file.Path.split('/')[0]
+        RNFetchBlob.fs.isDir(MAIN_DIR + '/' + pathName)
+        .then((isDir) => {
+            if (!isDir) {
+                RNFetchBlob.fs.mkdir(MAIN_DIR + '/' + pathName)
+                .then(() => {
+                    this.manageSingleFile(file)
+                 })
+                .catch((err) => {
+                    console.log(err)
+                 })
+            } else {
+                this.manageSingleFile(file)
+            }
+        })
+    }
+    checkFileExistence = (file) => {
+        //check esistenza local file
+        RNFetchBlob.fs.exists(MAIN_DIR + '/' + file.Path)
+            .then((exist) => {
+                if (exist) {
+                    this.manageFile(file)
+                    //creo sound e metto in state
+                } else {
+                    //writeremotefile
+                }
             })
-            .catch((error) => {
-                console.error(error);
-            });
+            .catch(() => {
+                console.log("error file exist check", file)
+            })
+    }
+    manageSingleFile = (file) => {
+        let context = this
+        let localObj = context.state.files.find(el => el.Path === file.Path)
+
+        //if (!localObj || file.LastModified > localObj.LastModified) {
+            this.fetchRemoteFile(file)
+        //}
+    }
+    async fetchData() {
+        const response = await fetch(MAIN_URL + JSON_NAME);
+        const json = await response.json();
+        return json;
     }
     fetchRemoteFile = (obj) => {
         let context = this
@@ -238,11 +359,13 @@ class MainView extends Component {
         })
         RNFetchBlob
             .config({
-                path : SOUNDS_LOCAL_PATH + '/' + encodeURI(obj.Path) //target path
+                path : MAIN_DIR + '/' + obj.Path //local target path
             })
-            .fetch('GET', MAIN_URL + encodeURI(obj.Path), {})
+            .fetch('GET', MAIN_URL + obj.Path, {})
             .then((res) => {
                 console.log('The file saved to ', res.path())
+
+                //this.syncState(obj)
                 context.setState({
                     currentFetch : context.state.currentFetch + 1,
                     isLoading: context.state.currentFetch + 1 != context.state.totalFetch
@@ -272,7 +395,7 @@ class MainView extends Component {
                     filteredFiles: boostedSoundMap
                 })
             }
-            this.sync()
+            //this.sync()
         })
     }
     stopSound = (file) => {
@@ -299,7 +422,7 @@ class MainView extends Component {
             })
         }
 
-        let sound = new Sound(file.Path, SOUNDS_LOCAL_PATH, (error) => {
+        let sound = new Sound(file.Path, MAIN_DIR, (error) => {
             if (error) {
               console.log('failed to load the sound', error);
             } else { // loaded successfully
