@@ -17,7 +17,7 @@ import {
 import { Container, Header, Title, Content, Footer, Badge, InputGroup, List, ListItem, Input, FooterTab, Button, Icon, Spinner } from 'native-base';
 import Sound from 'react-native-sound';
 import RNFetchBlob from 'react-native-fetch-blob'
-
+var R = require('ramda');
 const windowSize = Dimensions.get('window');
 
 const MAIN_DIR = RNFetchBlob.fs.dirs.DocumentDir
@@ -63,57 +63,6 @@ class MainView extends Component {
                 }
             });
         });
-    }
-    getRemoteSoundMap = () => {
-        let context = this
-
-        this.fetchData().then((res) => {
-            if (res) {
-                this.setState({
-                    remoteMap: res
-                });
-
-                res.map(obj => this.handleSingleFile(obj))
-
-                //alla fine di tutti i map
-                // update local json
-            }
-        })
-
-
-        // this.fetchJson().then((res) => {
-        //     if (res) {
-        //         res.map(obj => this.handleSingleFile(obj))
-
-                //creazione cartelle android
-                // if (Platform.OS == 'ios') {
-                //     res.map(obj => {
-                //         //find item in local json
-                //         this.manageSingleFile(obj)
-                //     })
-                // } else {
-                //     res.map(obj => this.createDirs(obj))
-                // }
-
-                // const boostedSoundMap = res.map((el, i) => {
-                //     return {
-                //         ...el,
-                //         isPlaying: false
-                //     }
-                // });
-                // context.setState({
-                //     files: boostedSoundMap,
-                //     filteredFiles: boostedSoundMap
-                // })
-
-                //update local json
-                //AsyncStorage.setItem('soundMap', JSON.stringify(res));
-        //     } else {
-        //         this.setState({
-        //             errorMessage: "Errore connessione server remoto"
-        //         })
-        //     }
-        // })
     }
     handleSingleFile = (file) => {
         //check se è nello stato
@@ -250,54 +199,35 @@ class MainView extends Component {
             this.playSound(file)
         }
     }
-    smartSync = () => {
-        let context = this
-
-        //prendo json remoto
-        this.fetchData().then((res) => {
-            if (res) {
-                // map
-                res.map(obj => {
-                    this.checkFileExistence(obj)
-                })
-            } else {
-                this.setState({
-                    errorMessage: "Errore connessione server remoto"
-                })
-            }
-        })
-         //-> se dir non esiste - crea ->
-         //-> if not -> writeremotefile -> if exists creo sound e metto in state
-        //salvo json in locale
-    }
     sync = () => {
         let context = this
         this.fetchData().then((res) => {
             if (res) {
+                let manageDirsResult = Platform.OS == 'ios' ? [] : this.manageDirs(res)
 
-                //creazione cartelle android
-                if (Platform.OS == 'ios') {
-                    res.map(obj => {
-                        //find item in local json
-                        this.manageSingleFile(obj)
+                Promise.all(manageDirsResult).then(values => {
+
+                    Promise.all(res.map(obj => this.manageSingleFile(obj))).then(values => {
+                        console.log("finished fetching files")
+
+                        //update local json
+                        AsyncStorage.setItem('soundMap', JSON.stringify(res));
+
+                        const boostedSoundMap = res.map((el, i) => {
+                            return {
+                                ...el,
+                                isPlaying: false,
+                                sound: new Sound(el.Path, MAIN_DIR, (e) => {})
+                            }
+                        });
+                        context.setState({
+                            files: boostedSoundMap,
+                            filteredFiles: boostedSoundMap
+                        })
                     })
-                } else {
-                    res.map(obj => this.createDirs(obj))
-                }
-
-                //update local json
-                AsyncStorage.setItem('soundMap', JSON.stringify(res));
-
-                const boostedSoundMap = res.map((el, i) => {
-                    return {
-                        ...el,
-                        isPlaying: false
-                    }
                 });
-                context.setState({
-                    files: boostedSoundMap,
-                    filteredFiles: boostedSoundMap
-                })
+
+
             } else {
                 this.setState({
                     errorMessage: "Errore connessione server remoto"
@@ -305,22 +235,16 @@ class MainView extends Component {
             }
         })
     }
-    createDirs = (file) => {
-        let context = this
-        const pathName = file.Path.split('/')[0]
-        RNFetchBlob.fs.isDir(MAIN_DIR + '/' + pathName)
-        .then((isDir) => {
-            if (!isDir) {
-                RNFetchBlob.fs.mkdir(MAIN_DIR + '/' + pathName)
-                .then(() => {
-                    this.manageSingleFile(file)
-                 })
-                .catch((err) => {
-                    console.log(err)
-                 })
-            } else {
-                this.manageSingleFile(file)
-            }
+    manageDirs = files => {
+        let uniqueDirs = R.dropRepeats(files.map(el => el.Path.split('/')[0]));
+        return uniqueDirs.map(path => {
+            const fullPath = `${MAIN_DIR}/${path}`
+            return RNFetchBlob.fs.isDir(fullPath)
+                .then(isDir => {
+                    if (!isDir) {
+                        return RNFetchBlob.fs.mkdir(fullPath)
+                    }
+                })
         })
     }
     checkFileExistence = (file) => {
@@ -343,8 +267,9 @@ class MainView extends Component {
         let localObj = context.state.files.find(el => el.Path === file.Path)
 
         //if (!localObj || file.LastModified > localObj.LastModified) {
-            this.fetchRemoteFile(file)
-        //}
+            return this.fetchRemoteFile(file)
+        // }
+        // return null
     }
     async fetchData() {
         const response = await fetch(MAIN_URL + JSON_NAME);
@@ -357,11 +282,11 @@ class MainView extends Component {
             totalFetch : this.state.totalFetch + 1,
             isLoading: true
         })
-        RNFetchBlob
+        return RNFetchBlob
             .config({
-                path : MAIN_DIR + '/' + obj.Path //local target path
+                path: `${MAIN_DIR}/${obj.Path}` //local target path
             })
-            .fetch('GET', MAIN_URL + obj.Path, {})
+            .fetch('GET', `${MAIN_URL}/${obj.Path}`, {})
             .then((res) => {
                 console.log('The file saved to ', res.path())
 
@@ -375,6 +300,11 @@ class MainView extends Component {
             .catch((errorMessage, statusCode) => {
                 // error handling
                 console.log(errorMessage)
+
+                context.setState({
+                    currentFetch : context.state.currentFetch + 1,
+                    isLoading: context.state.currentFetch + 1 != context.state.totalFetch
+                })
             })
     }
     getSoundMap = () => {
@@ -386,7 +316,7 @@ class MainView extends Component {
                     return {
                         ...el,
                         isPlaying: false,
-                        //sound: new Sound(el.Path, SOUNDS_LOCAL_PATH, (e) => {})
+                        sound: new Sound(el.Path, MAIN_DIR, (e) => {})
                     }
                 });
 
@@ -421,6 +351,23 @@ class MainView extends Component {
                 files: files
             })
         }
+
+        // files[index].sound.play((success) => {
+        //     if (success) {
+        //         files[index].isPlaying = !files[index].isPlaying
+        //
+        //         this.setState({
+        //             files: files
+        //         })
+        //     } else {
+        //         this.setState({
+        //             errorMessage: "Errore riproduzione audio"
+        //         })
+        //     }
+        // },
+        // (err) => {
+        //     console.log(err)
+        // })
 
         let sound = new Sound(file.Path, MAIN_DIR, (error) => {
             if (error) {
