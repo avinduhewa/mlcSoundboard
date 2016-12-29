@@ -42,19 +42,6 @@ class MainView extends Component {
     componentWillMount() {
         this.getSoundMap()
     }
-    getLocalSoundMap = () => {
-        AsyncStorage.getItem('soundMap').then((res) => {
-            const soundMap = JSON.parse(res);
-
-            if (soundMap) {
-                this.setState({
-                    localMap: soundMap
-                });
-            }
-
-            this.isOnlineAction(this.getRemoteSoundMap)
-        })
-    }
     isOnlineAction = (action) => {
         NetInfo.isConnected.fetch().then(() => {
             NetInfo.isConnected.addEventListener('change', isConnected => {
@@ -63,35 +50,6 @@ class MainView extends Component {
                 }
             });
         });
-    }
-    handleSingleFile = (file) => {
-        //check se è nello stato
-        if (this.isLocalFileToUpdate(file)) {
-            //check folder
-
-            //fetch singolo file
-            this.fetchRemoteFile()
-        } else {
-            this.syncState(file)
-        }
-    }
-    syncState = (file) => {
-        let index = this.state.remoteMap.findIndex( (el) => el.Path === file.Path)
-        let tempArray = this.state.remoteMap
-        tempArray[i] = {
-            ...file,
-            isPlaying: false,
-            sound: new Sound(file.Path, MAIN_DIR, (e) => {})
-        }
-
-        this.setState({
-            remoteMap: tempArray
-        })
-    }
-    isLocalFileToUpdate = (remoteFile) => {
-        let localFile = this.state.files.find(el => el.Path === remoteFile.Path)
-
-        return !localFile || remoteFile.LastModified > localFile.LastModified
     }
     renderFile = (file, index) => {
         return (
@@ -206,9 +164,9 @@ class MainView extends Component {
                 let manageDirsResult = Platform.OS == 'ios' ? [] : this.manageDirs(res)
 
                 Promise.all(manageDirsResult).then(values => {
-
+                    console.log("dirs ok")
                     Promise.all(res.map(obj => this.manageSingleFile(obj))).then(values => {
-                        console.log("finished fetching files")
+                        console.log("files ok")
 
                         //update local json
                         AsyncStorage.setItem('soundMap', JSON.stringify(res));
@@ -226,8 +184,6 @@ class MainView extends Component {
                         })
                     })
                 });
-
-
             } else {
                 this.setState({
                     errorMessage: "Errore connessione server remoto"
@@ -236,6 +192,7 @@ class MainView extends Component {
         })
     }
     manageDirs = files => {
+        console.log("checking dirs..")
         let uniqueDirs = R.dropRepeats(files.map(el => el.Path.split('/')[0]));
         return uniqueDirs.map(path => {
             const fullPath = `${MAIN_DIR}/${path}`
@@ -247,29 +204,23 @@ class MainView extends Component {
                 })
         })
     }
-    checkFileExistence = (file) => {
+    checkFileExistence(file) {
         //check esistenza local file
-        RNFetchBlob.fs.exists(MAIN_DIR + '/' + file.Path)
-            .then((exist) => {
-                if (exist) {
-                    this.manageFile(file)
-                    //creo sound e metto in state
-                } else {
-                    //writeremotefile
-                }
-            })
-            .catch(() => {
-                console.log("error file exist check", file)
-            })
+        return RNFetchBlob.fs.exists(`${MAIN_DIR}/${file.Path}`)
     }
     manageSingleFile = (file) => {
         let context = this
         let localObj = context.state.files.find(el => el.Path === file.Path)
 
-        //if (!localObj || file.LastModified > localObj.LastModified) {
-            return this.fetchRemoteFile(file)
-        // }
-        // return null
+        return this.checkFileExistence(file).then(exist => {
+            if (!exist || !localObj || file.LastModified > localObj.LastModified) {
+                return this.fetchRemoteFile(file)
+            }
+            return null
+        })
+        .catch(() => {
+            console.log("error file exist check", file)
+        })
     }
     async fetchData() {
         const response = await fetch(MAIN_URL + JSON_NAME);
@@ -290,7 +241,6 @@ class MainView extends Component {
             .then((res) => {
                 console.log('The file saved to ', res.path())
 
-                //this.syncState(obj)
                 context.setState({
                     currentFetch : context.state.currentFetch + 1,
                     isLoading: context.state.currentFetch + 1 != context.state.totalFetch
