@@ -17,7 +17,7 @@ import {
 import { Container, Header, Title, Content, Footer, Badge, InputGroup, List, ListItem, Input, FooterTab, Button, Icon, Spinner } from 'native-base';
 import Sound from 'react-native-sound';
 import RNFetchBlob from 'react-native-fetch-blob'
-var R = require('ramda');
+import R from 'ramda';
 const windowSize = Dimensions.get('window');
 
 const MAIN_DIR = RNFetchBlob.fs.dirs.DocumentDir
@@ -29,8 +29,6 @@ class MainView extends Component {
         super(props)
         this.state = {
             files: [],
-            localMap: [],
-            remoteMap: [],
             filteredFiles: [],
             isLoading: false,
             currentFetch: 0,
@@ -67,8 +65,10 @@ class MainView extends Component {
         )
     }
     renderFiles = () => {
-        let files = this.state.remoteMap.length > 0 ? this.state.remoteMap : this.state.localMap
-        return this.state.files.map((file, i) => this.renderFile(file, i))
+        const sorted = R.sortBy(R.prop('SortOrder'));
+        const mapIndexed = R.addIndex(R.map);
+        const renderer = (file, i) => this.renderFile(file, i);
+        return mapIndexed(renderer, sorted(this.state.files));
     }
     render() {
         return (
@@ -122,11 +122,6 @@ class MainView extends Component {
                             </Badge>
                         </View> : null
                     }
-
-                    {/* <Button
-                        onPress={this.test}>
-                        Test
-                    </Button> */}
                     <List>
                       {this.renderFiles()}
                     </List>
@@ -158,10 +153,10 @@ class MainView extends Component {
         }
     }
     sync = () => {
-        let context = this
+        const context = this
         this.fetchData().then((res) => {
             if (res) {
-                let manageDirsResult = Platform.OS == 'ios' ? [] : this.manageDirs(res)
+                const manageDirsResult = Platform.OS == 'ios' ? [] : this.manageDirs(res)
 
                 Promise.all(manageDirsResult).then(values => {
                     console.log("dirs ok")
@@ -193,7 +188,8 @@ class MainView extends Component {
     }
     manageDirs = files => {
         console.log("checking dirs..")
-        let uniqueDirs = R.dropRepeats(files.map(el => el.Path.split('/')[0]));
+        const getPath = el => R.split('/')((el.Path).head())
+        const uniqueDirs = R.dropRepeats(R.map(getPath, files));
         return uniqueDirs.map(path => {
             const fullPath = `${MAIN_DIR}/${path}`
             return RNFetchBlob.fs.isDir(fullPath)
@@ -209,8 +205,8 @@ class MainView extends Component {
         return RNFetchBlob.fs.exists(`${MAIN_DIR}/${file.Path}`)
     }
     manageSingleFile = (file) => {
-        let context = this
-        let localObj = context.state.files.find(el => el.Path === file.Path)
+        const context = this
+        const localObj = R.find(el => el.Path === file.Path, context.state.files)
 
         return this.checkFileExistence(file).then(exist => {
             if (!exist || !localObj || file.LastModified > localObj.LastModified) {
@@ -224,11 +220,10 @@ class MainView extends Component {
     }
     async fetchData() {
         const response = await fetch(MAIN_URL + JSON_NAME);
-        const json = await response.json();
-        return json;
+        return await response.json();
     }
     fetchRemoteFile = (obj) => {
-        let context = this
+        const context = this
         context.setState({
             totalFetch : this.state.totalFetch + 1,
             isLoading: true
@@ -238,7 +233,7 @@ class MainView extends Component {
                 path: `${MAIN_DIR}/${obj.Path}` //local target path
             })
             .fetch('GET', `${MAIN_URL}/${obj.Path}`, {})
-            .then((res) => {
+            .then(res => {
                 console.log('The file saved to ', res.path())
 
                 context.setState({
@@ -275,12 +270,11 @@ class MainView extends Component {
                     filteredFiles: boostedSoundMap
                 })
             }
-            //this.sync()
         })
     }
     stopSound = (file) => {
-        let files = this.state.files
-        let index = files.findIndex( (el) => el.Path === file.Path)
+        const files = this.state.files
+        const index = R.findIndex(el => el.Path === file.Path, files)
         if (index >= 0) {
             files[index].isPlaying = !files[index].isPlaying
 
@@ -292,8 +286,8 @@ class MainView extends Component {
         file.sound.stop()
     }
     playSound  = (file) => {
-        let files = this.state.files
-        let index = files.findIndex( (el) => el.Path === file.Path)
+        const files = this.state.files
+        const index = R.findIndex(el => el.Path === file.Path, files)
         if (index >= 0) {
             files[index].isPlaying = !files[index].isPlaying
 
@@ -302,24 +296,7 @@ class MainView extends Component {
             })
         }
 
-        // files[index].sound.play((success) => {
-        //     if (success) {
-        //         files[index].isPlaying = !files[index].isPlaying
-        //
-        //         this.setState({
-        //             files: files
-        //         })
-        //     } else {
-        //         this.setState({
-        //             errorMessage: "Errore riproduzione audio"
-        //         })
-        //     }
-        // },
-        // (err) => {
-        //     console.log(err)
-        // })
-
-        let sound = new Sound(file.Path, MAIN_DIR, (error) => {
+        const sound = new Sound(file.Path, MAIN_DIR, error => {
             if (error) {
               console.log('failed to load the sound', error);
             } else { // loaded successfully
@@ -332,7 +309,7 @@ class MainView extends Component {
 
                   //file.sound.enableInSilenceMode(true);
                   console.log("name", sound._filename)
-                  sound.play((success) => {
+                  sound.play(success => {
                       if (success) {
                           files[index].isPlaying = !files[index].isPlaying
 
@@ -346,7 +323,7 @@ class MainView extends Component {
                           })
                       }
                   },
-                  (err) => {
+                  err => {
                       console.log(err)
                   })
             }
